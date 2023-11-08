@@ -1,2 +1,2 @@
-# hass-blueprints
-Hoam Assistant blueprints
+# Home Assistant blueprints
+

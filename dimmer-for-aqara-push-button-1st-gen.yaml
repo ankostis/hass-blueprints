@@ -1,0 +1,144 @@
+blueprint:
+  name: Aqara push-button-v1 toggle-dim light
+  description: >
+    Toggle & dim lights with Aqara push-buttons, tested with "v1" only (WXKG01LM)
+
+    - It dims brightness up/down by pressing continously the button. 
+    - Every time the button is released and re-pressed, the direction (up/down)
+      is reversed.
+    - If it reaches 0% or 100%, it stops.
+    - Dependencies: needs a toggle helper to remember and reverse
+      the current dimming-direction after release.
+
+  source_url: https://community.home-assistant.io/t/dimmer-for-aqara-push-button-1st-gen/341923
+  domain: automation
+  input:
+    button:
+      name: Push button
+      description: >
+        The Aqara single-switch device (v1, (WXKG01LM)) which supports long-press/release events
+        used to dim the `Light`.
+      selector:
+        device:
+          manufacturer: LUMI
+          model: lumi.sensor_switch
+    light:
+      name: Light
+      description: The light to dim when long-pressing the `Push button`.
+      selector:
+        entity:
+          domain: light
+    dim_dir_helper:
+      name: Dimming direction boolean helper
+      description: >
+        A toggle helper (`input_boolean`) to store the dimming-direction [-1, 1],
+        to be reversed on the next release & hold.
+        tip: for consistency, name it e.g. `dimdir_xxx`.
+      selector:
+        entity:
+          domain: input_number
+    bright_step:
+      name: "Brightness step"
+      description: >
+        Brightness change on each transition step (1, 255)
+        (a positive, for both increase/decrease)
+      default: '7'
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: slider
+          step: 1
+    step_delay:
+      name: Transition step length
+      description: Length of each transition step.
+      default: '0.03'
+      selector:
+        number:
+          min: 0.01
+          max: 1.4
+          step: 0.01
+          unit_of_measurement: s
+          mode: slider
+
+mode: restart
+
+trigger:
+- device_id: !input 'button'
+  platform: device
+  domain: zha
+  type: remote_button_short_press
+  subtype: remote_button_short_press
+- device_id: !input 'button'
+  platform: device
+  domain: zha
+  type: remote_button_long_press
+  subtype: button
+- device_id: !input 'button'
+  platform: device
+  domain: zha
+  type: remote_button_long_release
+  subtype: button
+
+action:
+
+- choose:
+  - conditions:
+    - alias: "Single click?"
+      condition: template
+      value_template: "{{ (trigger.event.data.command | default) == 'click' }}"
+    sequence:
+      - service: light.toggle
+        target:
+          entity_id: !input 'light'
+
+  - conditions:
+    - alias: "Long-pressed (and not released yet)?"
+      condition: template
+      value_template: "{{ (trigger.event.data.command | default) == 'hold' }}"
+    sequence:
+      - variables:
+          light: !input 'light'
+          button: !input 'button'
+          bright_step: !input 'bright_step'
+          step_delay: !input 'step_delay'
+          dim_dir_helper: !input 'dim_dir_helper'
+
+      - alias: "Reverse (or initialize) dimming direction"
+        service: input_number.set_value
+        target:
+          entity_id: !input 'dim_dir_helper'
+        data:
+          value: |
+            {% set bright = state_attr(light, 'brightness') | int(1) %}
+            {% set dimdir = states(dim_dir_helper) | int(123) %}
+            {# When down the bottom, can only go up. #}
+            {% if bright < 2 %}
+              1
+            {% elif (dimdir | abs) == 1  %}
+              {{ -1 * dimdir }}
+            {% else %} {# If dimdir invalid, dim towards where bigger sliding space. #}
+              {{ 1 if bright < 128 else -1 }}
+            {% endif %}
+
+      - alias: "Dim up/down repeatedely"
+        repeat:
+          # Relase-button will kill the loop due to `mode: restart`.
+          while: '{{ true }}'
+          sequence:
+            - service: light.turn_on
+              target:
+                entity_id: !input 'light'
+              data:
+                transition: !input 'step_delay'
+                brightness_step: |
+                  {% set bright = state_attr(light, 'brightness') | int(1) %}
+                  {% set dimdir = states(dim_dir_helper) | int(1) %}
+                  {% set bright_offset = (dimdir * (bright_step | float)) | int(0) %}
+                  {% if bright + bright_offset <= 1 %}
+                    {{ -bright + 2 | int }} {# note: with +1, light was switching-off. #}
+                  {% else %}
+                    {{ bright_offset | int }}
+                  {% endif %}
+
+            - delay: !input 'step_delay'
