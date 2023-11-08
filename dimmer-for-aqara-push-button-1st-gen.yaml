@@ -31,7 +31,7 @@ blueprint:
     dim_dir_helper:
       name: Dimming direction boolean helper
       description: >
-        A toggle helper (`input_boolean`) to store the dimming-direction [-1, 1],
+        A toggle helper (`input_number`) to store the dimming-direction [-1, 1],
         to be reversed on the next release & hold.
         tip: for consistency, name it e.g. `dimdir_xxx`.
       selector:
