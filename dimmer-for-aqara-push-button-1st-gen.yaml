@@ -44,7 +44,7 @@ blueprint:
       description: >
         Brightness change on each transition step (1, 255)
         (a positive, for both increase/decrease)
-      default: '7'
+      default: '32'
       selector:
         number:
           min: 1
