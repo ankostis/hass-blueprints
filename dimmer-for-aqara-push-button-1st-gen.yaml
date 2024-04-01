@@ -22,12 +22,14 @@ blueprint:
         device:
           manufacturer: LUMI
           model: lumi.sensor_switch
+          multiple: true
     light:
       name: Light
       description: The light to dim when long-pressing the `Push button`.
       selector:
         entity:
           domain: light
+          multiple: true
     dim_dir_helper:
       name: Dimming direction boolean helper
       description: >
